@@ -28,7 +28,63 @@ class ImageAligner:
     def __init__(self, scale_factor):
         self.scale_factor = scale_factor
         self.motion_type = cv2.MOTION_AFFINE
-        
+
+    def estimateRigidTransform (self,im1,im2):
+
+        WIDTH=160
+        HEIGHT=120
+        COUNT=15
+
+        sz0_height,sz0_width,cn=im1.shape;
+        sz1_height=HEIGHT
+        sz1_width=WIDTH
+
+        scale = max(1.0, max( float(sz1_width)/float(sz0_width), float(sz1_height)/float(sz0_height) ));
+
+
+        sz1_width=round(sz0_width*scale)
+        sz1_height=round(sz0_height*scale)
+        sz1=(sz1_height,sz1_width)
+
+        if (cn!=1): #Convert 3 channels to grayscale
+                im1_gray = cv2.cvtColor(im1, cv2.COLOR_BGR2GRAY)
+                im1_gray = cv2.resize( im1_gray, sz1,0.0,0.0,interpolation = cv2.INTER_AREA )
+                im2_gray = cv2.cvtColor(im2, cv2.COLOR_BGR2GRAY)
+                im2_gray = cv2.resize( im2_gray, sz1,0.0,0.0,interpolation = cv2.INTER_AREA )
+
+        else:
+                im1_gray = im1
+                im2_gray = im2
+
+
+        count_y = COUNT
+        count_x = round(float(COUNT)*float(sz1_width)/float(sz1_height));
+        count = count_x * count_y;
+
+        pA=np.empty((count,2),np.float32);
+        pB=np.empty((count,2),np.float32);
+
+
+
+        status=np.empty(count);
+
+        k=0;
+
+        for i in range(count_y): #0... < count_y
+            for j in range(count_x): #0... < count_x
+                pA[k]=[(j+0.5)*sz1_width/count_x,(i+0.5)*sz1_height/count_y] # [x, y];
+                k=k+1
+
+
+        # find the corresponding points in im2
+
+
+        cv2.calcOpticalFlowPyrLK(im1_gray, im2_gray, pA, pB, status, None, [21, 21], 3,
+                             (cv2.TERM_CRITERIA_MAX_ITER, 40, 0.1))
+
+        [tmatrix,inliers]=cv2.estimateAffine2D(pA,pB)
+        return (tmatrix)
+
     ## Calculate the Transformation matrices for all images in the dataset
     #  @param dataset ImageDataHolder object with filled hdulists and empty 
     #  transform matrices
@@ -94,14 +150,17 @@ class ImageAligner:
                 reference_tile_C1 = cv2.cvtColor(reference_tile, cv2.COLOR_BGR2GRAY)
                 
                 # rough inital alignment using feature detection
-                warp_matrix = cv2.estimateRigidTransform(reference_tile, image_tile, False)
+
+
+                warp_matrix = self.estimateRigidTransform(reference_tile, image_tile)
                 
                 # if estimateRigidTransform has failed, create unity matrix
                 if warp_matrix is None:
                     print ("WARNING: Initial alignment for Image ", index + 1, " failed!")
                     warp_matrix = np.eye(2,3, dtype=np.float32)
                 
-                # convert warp matrix to float32 because findTransformECC needs this            
+                # convert warp matrix to float32 because findTransformECC needs this
+
                 warp_matrix = warp_matrix.astype(np.float32)   
                 
                 # @todo: those two parameters can be set in config!
